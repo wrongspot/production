@@ -189,8 +189,6 @@ Insert-Release-Data:
   only:
     refs:
       - schedules
-    variables:
-      - $TAG
   image:
     name: docker/compose:1.24.1
     entrypoint: [""]
@@ -264,8 +262,6 @@ e2e-tests:on-nightly:
   only:
     refs:
       - schedules
-    variables:
-      - $TAG
   image:
     name: docker/compose:1.24.1
     entrypoint: [""]
