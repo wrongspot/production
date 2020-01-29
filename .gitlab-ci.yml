@@ -14,14 +14,14 @@ variables:
   PLATFORM_BRANCH: "6.1"
 
 stages:
-  #- prepare-build
-  #- build
-  #- package
-  #- test
+  - prepare-build
+  - build
+  - package
+  - test
   - prepare-release
   - release
 
-Split-Repos:on-nightly:
+.Split-Repos:on-nightly:
   stage: prepare-build
 #  only:
 #    refs:
@@ -51,7 +51,7 @@ Split-Repos:on-nightly:
     paths:
       - repos/*
 
-Build:on-nightly:
+.Build:on-nightly:
   stage: build
 #  only:
 #    refs:
