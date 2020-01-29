@@ -21,12 +21,12 @@ stages:
   - prepare-release
   - release
 
-.Split-Repos:on-nightly:
+Split-Repos:on-nightly:
   stage: prepare-build
-#  only:
-#    refs:
-#      - schedules
-  image: debian:9-slim
+  only:
+    refs:
+      - schedules
+  image: debian:buster-slim
   variables:
     SPLITSH: /usr/bin/splitsh-lite
   before_script:
@@ -51,11 +51,11 @@ stages:
     paths:
       - repos/*
 
-.Build:on-nightly:
+Build:on-nightly:
   stage: build
-#  only:
-#    refs:
-#      - schedules
+  only:
+    refs:
+      - schedules
   image: docker
   services:
     - name: docker:18.09.7-dind
@@ -128,10 +128,10 @@ Insert-Release-Data:
   stage: prepare-release
   image: debian:buster-slim
   when: manual
-#  only:
-#    refs:
-#      - tags
-#      - schedules
+  only:
+    refs:
+      - tags
+      - schedules
   before_script:
     - apt-get update && apt-get install -y git openssh-client composer php-dom python3-pip
     - pip3 install s3cmd
@@ -140,11 +140,9 @@ Insert-Release-Data:
     - chmod 600 $SSH_PRIVATE_KEY_FILE && ssh-add $SSH_PRIVATE_KEY_FILE
     - '[[ -f /.dockerenv ]] && mkdir -p ~/.ssh/ && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
   script:
-    - 'set -e'
+    - 'set -x'
     - '[[ -e artifacts/install.zip && -e artifacts/update.zip ]]'
     - export TAG=${CI_COMMIT_TAG:-{TAG:-$(.gitlab-ci/tools/console show-next-tag)}}
-    - echo $TAG
-    - exit 1
     - >
       case $TAG in
         *-rc*) BUILD_CHANNEL=80;;
@@ -235,106 +233,71 @@ Insert-Release-Data:
     reports:
       junit: artifacts/phpunit.junit.xml
 
-#unit:mysql:5.7:
-#  <<: *unit_test_script_definition_nightly
-#  variables:
-#    COMPOSE_FILE_EXTENSION: "" # default
-#
-#unit:mysql:8:
-#  <<: *unit_test_script_definition_nightly
-#  variables:
-#    COMPOSE_FILE_EXTENSION: ".gitlab-ci/conf/docker-compose.mysql8.0.yml"
-#
-#unit:mariadb:10.4:
-#  <<: *unit_test_script_definition_nightly
-#  variables:
-#    COMPOSE_FILE_EXTENSION: ".gitlab-ci/conf/docker-compose.mariadb10.4.yml"
-#
-#unit:php7.2:
-#  <<: *unit_test_script_definition_nightly
-#  variables:
-#    COMPOSE_FILE_EXTENSION: ".gitlab-ci/conf/docker-compose.php72.yml"
-#
-#unit:php7.4:
-#  <<: *unit_test_script_definition_nightly
-#  variables:
-#    COMPOSE_FILE_EXTENSION: ".gitlab-ci/conf/docker-compose.php74.yml"
+unit:mysql:5.7:
+  <<: *unit_test_script_definition_nightly
+  variables:
+    COMPOSE_FILE_EXTENSION: "" # default
+
+unit:mysql:8:
+  <<: *unit_test_script_definition_nightly
+  variables:
+    COMPOSE_FILE_EXTENSION: ".gitlab-ci/conf/docker-compose.mysql8.0.yml"
+
+unit:mariadb:10.4:
+  <<: *unit_test_script_definition_nightly
+  variables:
+    COMPOSE_FILE_EXTENSION: ".gitlab-ci/conf/docker-compose.mariadb10.4.yml"
+
+unit:php7.2:
+  <<: *unit_test_script_definition_nightly
+  variables:
+    COMPOSE_FILE_EXTENSION: ".gitlab-ci/conf/docker-compose.php72.yml"
+
+unit:php7.4:
+  <<: *unit_test_script_definition_nightly
+  variables:
+    COMPOSE_FILE_EXTENSION: ".gitlab-ci/conf/docker-compose.php74.yml"
 
 
-#e2e-tests:on-nightly:
-#  stage: test
-#  only:
-#    refs:
-#      - schedules
-#    variables:
-#      - $TAG
-#  image:
-#    name: docker/compose:1.24.1
-#    entrypoint: [""]
-#  services:
-#    - name: docker:18.09.7-dind
-#      alias: docker
-#  variables:
-#    IMAGE_TAG: "${TAG}-dev"
-#    COMPOSE_FILE: "docker-compose.yml:.gitlab-ci/conf/docker-compose.e2e.yml"
-#  script:
-#    - set -x
-#    - docker login $REPOSITORY_HOST -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
-#    - docker pull ${IMAGE_NAME}:${IMAGE_TAG}
-#    - chmod 755 .gitlab-ci/conf/mysql || true
-#    - chmod 744 .gitlab-ci/conf/mysql/* || true
-#    - docker-compose up -d mysql
-#    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${COMPOSE_PROJECT_NAME}_app_server
-#    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} shopware-production:local
-#    - mkdir -p vendor/shopware/recovery/Test/e2e
-#    - docker-compose up -d app_server
-#    - sleep 3
-#    - docker cp $(docker-compose ps -q app_server):/sw6/vendor/shopware/recovery/Test/e2e/ vendor/shopware/recovery/Test/
-#    - docker-compose up -d
-#    - sleep 3
-#    - docker-compose exec -T app_server rm install.lock
-#    - docker-compose exec -T app_cypress npm clean-install --prefix /e2e-Installer
-#    - docker-compose exec -T app_cypress /e2e-Installer/node_modules/.bin/cypress run --project /e2e-Installer --browser chrome --config baseUrl=http://docker.vm:8000 --config numTestsKeptInMemory=0
-#  artifacts:
-#    expire_in: 1 week
-#    when: always
-#    paths:
-#      - vendor/shopware/recovery/Test/e2e/artifacts/
-#
-#Create-Release-Branch:
-#  stage: prepare-release
-#  image:
-#    name: docker/compose:1.24.1
-#    entrypoint: [""]
-#  services:
-#      - name: docker:18.09.7-dind
-#        alias: docker
-#  when: manual
-#  only:
-#    refs:
-#      - schedules
-#    variables:
-#      - $TAG
-#  variables:
-#    IMAGE_TAG: "${TAG}-dev"
-#  before_script:
-#    - apk --no-cache add openssh-client curl curl-dev jq composer git
-#    - mkdir -p ~/.ssh/
-#    - echo -e "$SHOPWAREBOT_PRIVATE_KEY" > ~/.ssh/id_rsa
-#    - chmod 600 ~/.ssh/id_rsa
-#    - eval `ssh-agent -s`
-#    - ssh-add ~/.ssh/id_rsa
-#    - ssh-keyscan github.com >> ~/.ssh/known_hosts
-#    - '[[ -f /.dockerenv ]] && mkdir -p ~/.ssh/ && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-#    - git config --global user.email $GIT_EMAIL
-#    - git config --global user.name $GIT_USER
-#    - docker login $REPOSITORY_HOST -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
-#    - docker pull ${IMAGE_NAME}:${IMAGE_TAG}
-#    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${COMPOSE_PROJECT_NAME}_app_server
-#    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} shopware-production:local
-#    - docker-compose up -d app_server
-#  script:
-#    - .gitlab-ci/create-release-branch.sh
+e2e-tests:on-nightly:
+  stage: test
+  only:
+    refs:
+      - schedules
+    variables:
+      - $TAG
+  image:
+    name: docker/compose:1.24.1
+    entrypoint: [""]
+  services:
+    - name: docker:18.09.7-dind
+      alias: docker
+  variables:
+    IMAGE_TAG: "${TAG}-dev"
+    COMPOSE_FILE: "docker-compose.yml:.gitlab-ci/conf/docker-compose.e2e.yml"
+  script:
+    - set -x
+    - docker login $REPOSITORY_HOST -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
+    - docker pull ${IMAGE_NAME}:${IMAGE_TAG}
+    - chmod 755 .gitlab-ci/conf/mysql || true
+    - chmod 744 .gitlab-ci/conf/mysql/* || true
+    - docker-compose up -d mysql
+    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${COMPOSE_PROJECT_NAME}_app_server
+    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} shopware-production:local
+    - mkdir -p vendor/shopware/recovery/Test/e2e
+    - docker-compose up -d app_server
+    - sleep 3
+    - docker cp $(docker-compose ps -q app_server):/sw6/vendor/shopware/recovery/Test/e2e/ vendor/shopware/recovery/Test/
+    - docker-compose up -d
+    - sleep 3
+    - docker-compose exec -T app_server rm install.lock
+    - docker-compose exec -T app_cypress npm clean-install --prefix /e2e-Installer
+    - docker-compose exec -T app_cypress /e2e-Installer/node_modules/.bin/cypress run --project /e2e-Installer --browser chrome --config baseUrl=http://docker.vm:8000 --config numTestsKeptInMemory=0
+  artifacts:
+    expire_in: 1 week
+    when: always
+    paths:
+      - vendor/shopware/recovery/Test/e2e/artifacts/
 
 
 Create-Release-Branch:
@@ -345,10 +308,10 @@ Create-Release-Branch:
   services:
       - name: docker:18.09.7-dind
         alias: docker
-#  when: manual
-#    only:
-#      refs:
-#        - schedules
+  when: manual
+    only:
+      refs:
+        - schedules
   variables:
     MANY_REPO_BASE_URL: "git@gitlab.shopware.com:shopware/6/product/many-repositories"
     TARGET_BRANCH: $PLATFORM_BRANCH

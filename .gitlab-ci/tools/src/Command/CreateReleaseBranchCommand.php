@@ -55,10 +55,6 @@ class CreateReleaseBranchCommand extends Command
     {
         $config = self::getConfig($input->getArgument('tag'), $input->getOption('stability'));
 
-        var_dump($config);
-
-        return 1;
-
         $client = new Client([
             'base_uri' => $config['gitlabBaseUri'],
             'headers' => [
