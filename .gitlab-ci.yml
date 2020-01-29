@@ -23,30 +23,7 @@ stages:
   #- release
 
 
-Proto:
-  image: alpine:3.11
-  stage: proto
-  variables:
-    MANY_REPO_BASE_URL: "git@gitlab.shopware.com:shopware/6/product/many-repositories"
-    TARGET_BRANCH: $PLATFORM_BRANCH
-    CI_REPOSITORY_URL: "git@gitlab.shopware.com:/shopware/6/product/production"
-  before_script:
-    - apk --no-cache add openssh-client git bash jq composer php-dom php-tokenizer php-xmlwriter php-xml curl curl-dev
-    - mkdir -p ~/.ssh/
-    - echo -e "$SHOPWAREBOT_PRIVATE_KEY" > ~/.ssh/id_rsa
-    - chmod 600 ~/.ssh/id_rsa
-    - eval `ssh-agent -s`
-    - ssh-add ~/.ssh/id_rsa
-    - ssh-keyscan github.com >> ~/.ssh/known_hosts
-    - '[[ -f /.dockerenv ]] && mkdir -p ~/.ssh/ && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-    - git config --global user.email $GIT_EMAIL
-    - git config --global user.name $GIT_USER
-    - composer install --working-dir=.gitlab-ci/tools
-  script:
-    - export PROJECT_ROOT=$(pwd)
-    - TAG=$(.gitlab-ci/tools/console show-next-tag)
-    - echo $TAG
-    - .gitlab-ci/tools/console create-release-branch $TAG
+
 
   # TODO: re-enable
 #.Split-Repos:on-nightly:
@@ -365,3 +342,36 @@ Proto:
 #    - docker-compose up -d app_server
 #  script:
 #    - .gitlab-ci/create-release-branch.sh
+
+
+Proto:
+  image: alpine:3.11
+  stage: proto
+  variables:
+    MANY_REPO_BASE_URL: "git@gitlab.shopware.com:shopware/6/product/many-repositories"
+    TARGET_BRANCH: $PLATFORM_BRANCH
+    CI_REPOSITORY_URL: "git@gitlab.shopware.com:/shopware/6/product/production"
+  before_script:
+    - apk --no-cache add openssh-client git bash jq composer php-dom php-tokenizer php-xmlwriter php-xml curl curl-dev
+    - mkdir -p ~/.ssh/
+    - echo -e "$SHOPWAREBOT_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - eval `ssh-agent -s`
+    - ssh-add ~/.ssh/id_rsa
+    - ssh-keyscan github.com >> ~/.ssh/known_hosts
+    - '[[ -f /.dockerenv ]] && mkdir -p ~/.ssh/ && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    - git config --global user.email $GIT_EMAIL
+    - git config --global user.name $GIT_USER
+    - docker login $REPOSITORY_HOST -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
+    - export TAG=$(.gitlab-ci/tools/console show-next-tag)
+    - export IMAGE_TAG="${TAG}-dev"
+    - docker pull ${IMAGE_NAME}:${IMAGE_TAG}
+    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${COMPOSE_PROJECT_NAME}_app_server
+    - docker tag ${IMAGE_NAME}:${IMAGE_TAG} shopware-production:local
+    - docker-compose up -d app_server
+    - composer install --working-dir=.gitlab-ci/tools
+  script:
+    - export PROJECT_ROOT=$(pwd)
+    - docker cp $(docker-compose ps -q app_server):/sw6/vendor/ .
+    - docker cp $(docker-compose ps -q app_server):/sw6/composer.lock composer.lock
+    - .gitlab-ci/tools/console create-release-branch $TAG
