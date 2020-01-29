@@ -126,22 +126,25 @@ Package:
 
 Insert-Release-Data:
   stage: prepare-release
-  image: debian:9-slim
+  image: debian:buster-slim
   when: manual
-  only:
-    refs:
-      - tags
-      - schedules
+#  only:
+#    refs:
+#      - tags
+#      - schedules
   before_script:
-    - 'echo TODO: fix me'
-    - apt-get update && apt-get install -y git openssh-client s3cmd
+    - apt-get update && apt-get install -y git openssh-client composer php-dom python3-pip
+    - pip3 install s3cmd
+    - composer install --working-dir=.gitlab-ci/tools'
     - eval $(ssh-agent -s)
     - chmod 600 $SSH_PRIVATE_KEY_FILE && ssh-add $SSH_PRIVATE_KEY_FILE
     - '[[ -f /.dockerenv ]] && mkdir -p ~/.ssh/ && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
   script:
     - 'set -e'
     - '[[ -e artifacts/install.zip && -e artifacts/update.zip ]]'
-    - export TAG=${TAG:-$(.gitlab-ci/tools/console show-next-tag)}
+    - export TAG=${CI_COMMIT_TAG:-{TAG:-$(.gitlab-ci/tools/console show-next-tag)}}
+    - echo $TAG
+    - exit 1
     - >
       case $TAG in
         *-rc*) BUILD_CHANNEL=80;;
@@ -151,7 +154,6 @@ Insert-Release-Data:
         *) BUILD_CHANNEL=100;;
       esac
     - 'IFS="-" read -ra VERSION_PARTS <<< "$TAG"'
-    - 'if [[ -z CI_COMMIT_TAG ]]; then BUILD_CHANNEL=20; fi'
     - export BUILD_VERSION=${VERSION_PARTS[0]}
     - export BUILD_VERSION_TEXT=${VERSION_PARTS[1]}
     - '[[ -n $BUILD_VERSION ]]'
