@@ -15,164 +15,156 @@ variables:
 
 stages:
   - proto
-  #- prepare-build
-  #- build
-  #- package
-  #- test
-  #- prepare-release
-  #- release
+  - prepare-build
+  - build
+  - package
+  - test
+  - prepare-release
+  - release
 
+.Split-Repos:on-nightly:
+  stage: prepare-build
+  only:
+    refs:
+      - schedules
+  image: debian:9-slim
+  variables:
+    SPLITSH: /usr/bin/splitsh-lite
+  before_script:
+    - apt-get update && apt-get install -y wget git
+    - wget https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz
+    - tar -xf lite_linux_amd64.tar.gz ./splitsh-lite
+    - chmod +x splitsh-lite
+    - mv splitsh-lite $SPLITSH
+    - HASH_CHECK_LINE="ec46c5a409422bf55b26f7de1faab67c2320362934947f984872b3aedc4a9d99  $SPLITSH"
+    - echo $HASH_CHECK_LINE | sha256sum -c
+  script:
+    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.shopware.com/shopware/6/product/platform.git -b ${PLATFORM_BRANCH} --bare platform
+    - git -C platform remote set-url origin https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.shopware.com/shopware/6/product/platform.git
+    - git -C platform fetch origin
+    - >
+      for pkg in $SPLIT_REPOS ; do
+        bin/split_repo.sh platform src/${pkg}
+        git -C platform/ rev-parse HEAD > repos/${pkg,,}/PLATFORM_COMMIT_SHA
+      done
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - repos/*
 
+.Build:on-nightly:
+  stage: build
+  only:
+    refs:
+      - schedules
+  image: docker
+  services:
+    - name: docker:18.09.7-dind
+      alias: docker
+  dependencies:
+    - Split-Repos:on-nightly
+  before_script:
+    - apk --no-cache add openssh-client git bash jq composer php-dom php-tokenizer php-xmlwriter php-xml curl curl-dev npm
+    - git config --global user.email $GIT_EMAIL
+    - git config --global user.name $GIT_USER
+    - docker login gitlab.shopware.com:5005 -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
+    - '[ -n "$TAG" ] || composer install --working-dir=.gitlab-ci/tools'
+  script:
+    - export TAG=${TAG:-$(.gitlab-ci/tools/console show-next-tag)}
+    - export IMAGE_TAG="${TAG}-dev"
+    - ./bin/build-nightly.sh
+    - docker build . -t "${IMAGE_NAME}:${IMAGE_TAG}"
+    - docker push "${IMAGE_NAME}:${IMAGE_TAG}"
+  artifacts:
+    expire_in: 1 week
+    paths:
+      - repos/*
 
+Build:
+  stage: build
+  only:
+    - tags
+  image: docker
+  services:
+    - name: docker:18.09.7-dind
+      alias: docker
+  before_script:
+    - apk add git bash jq composer npm
+    - docker login gitlab.shopware.com:5005 -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
+  script:
+    - export PLATFORM_COMMIT_SHA=$(cat PLATFORM_COMMIT_SHA)
+    - composer install --ignore-platform-reqs --no-interaction
+    - docker build . -t "${IMAGE_NAME}:${PLATFORM_COMMIT_SHA}"
+    - docker push "${IMAGE_NAME}:${PLATFORM_COMMIT_SHA}"
+    - docker tag "${IMAGE_NAME}:${PLATFORM_COMMIT_SHA}" "${IMAGE_NAME}:${CI_COMMIT_TAG}"'
+    - docker push "${IMAGE_NAME}:${CI_COMMIT_TAG}"'
+    - 'echo TODO: tag as v6.1 if stable'
 
-  # TODO: re-enable
-#.Split-Repos:on-nightly:
-#  stage: prepare-build
-#  only:
-#    refs:
-#      - schedules
-#    variables:
-#      - $TAG
-#  image: debian:9-slim
-#  variables:
-#    SPLITSH: /usr/bin/splitsh-lite
-#  before_script:
-#    - apt-get update && apt-get install -y wget git
-#    - wget https://github.com/splitsh/lite/releases/download/v1.0.1/lite_linux_amd64.tar.gz
-#    - tar -xf lite_linux_amd64.tar.gz ./splitsh-lite
-#    - chmod +x splitsh-lite
-#    - mv splitsh-lite $SPLITSH
-#    - HASH_CHECK_LINE="ec46c5a409422bf55b26f7de1faab67c2320362934947f984872b3aedc4a9d99  $SPLITSH"
-#    - echo $HASH_CHECK_LINE | sha256sum -c
-#  script:
-#    - git clone https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.shopware.com/shopware/6/product/platform.git -b ${PLATFORM_BRANCH} --bare platform
-#    - git -C platform remote set-url origin https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.shopware.com/shopware/6/product/platform.git
-#    - git -C platform fetch origin
-#    - >
-#      for pkg in $SPLIT_REPOS ; do
-#        bin/split_repo.sh platform src/${pkg}
-#        git -C platform/ rev-parse HEAD > repos/${pkg,,}/PLATFORM_COMMIT_SHA
-#      done
-#  artifacts:
-#    expire_in: 1 week
-#    paths:
-#      - repos/*
-#
-#.Build:on-nightly:
-#  stage: build
-#  only:
-#    refs:
-#      - schedules
-#    variables:
-#      - $TAG
-#  image: docker
-#  services:
-#    - name: docker:18.09.7-dind
-#      alias: docker
-#  dependencies:
-#    - Split-Repos:on-nightly
-#  variables:
-#    IMAGE_TAG: "${TAG}-dev"
-#  before_script:
-#    - apk add git bash jq composer npm
-#    - git config --global user.email $GIT_EMAIL
-#    - git config --global user.name $GIT_USER
-#    - docker login gitlab.shopware.com:5005 -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
-#  script:
-#    - ./bin/build-nightly.sh
-#    - docker build . -t "${IMAGE_NAME}:${IMAGE_TAG}"
-#    - docker push "${IMAGE_NAME}:${IMAGE_TAG}"
-#  artifacts:
-#    expire_in: 1 week
-#    paths:
-#      - repos/*
-#
-#Build:
-#  stage: build
-#  only:
-#    - tags
-#  image: docker
-#  services:
-#    - name: docker:18.09.7-dind
-#      alias: docker
-#  before_script:
-#    - apk add git bash jq composer npm
-#    - docker login gitlab.shopware.com:5005 -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
-#  script:
-#    - export PLATFORM_COMMIT_SHA=$(cat PLATFORM_COMMIT_SHA)
-#    - composer install --ignore-platform-reqs --no-interaction
-#    - docker build . -t "${IMAGE_NAME}:${PLATFORM_COMMIT_SHA}"
-#    - docker push "${IMAGE_NAME}:${PLATFORM_COMMIT_SHA}"
-#    - docker tag "${IMAGE_NAME}:${PLATFORM_COMMIT_SHA}" "${IMAGE_NAME}:${CI_COMMIT_TAG}"'
-#    - docker push "${IMAGE_NAME}:${CI_COMMIT_TAG}"'
-#    - 'echo TODO: tag as v6.1 if stable'
-#
-#Package:
-#  stage: package
-#  image:
-#    name: docker/compose:1.24.1
-#    entrypoint: [""]
-#  services:
-#    - name: docker:18.09.7-dind
-#      alias: docker
-#  only:
-#    refs:
-#      - tags
-#      - schedules
-#    variables:
-#      - $CI_COMMIT_TAG
-#      - $TAG
-#  before_script:
-#    - docker login $REPOSITORY_HOST -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
-#  script:
-#    - IMAGE_TAG="${CI_COMMIT_TAG:-${TAG}-dev}"
-#    - docker pull ${IMAGE_NAME}:${IMAGE_TAG}
-#    - docker run -v $PWD/artifacts:/artifacts --entrypoint=bin/package.sh ${IMAGE_NAME}:${IMAGE_TAG}
-#  artifacts:
-#    paths:
-#      - artifacts/
-#
-#Insert-Release-Data:
-#  stage: prepare-release
-#  image: debian:9-slim
-#  when: manual
-#  only:
-#    refs:
-#      - tags
-#      - schedules
-#    variables:
-#      - $CI_COMMIT_TAG
-#      - $TAG
-#  before_script:
-#    - apt-get update && apt-get install -y git openssh-client s3cmd
-#    - eval $(ssh-agent -s)
-#    - chmod 600 $SSH_PRIVATE_KEY_FILE && ssh-add $SSH_PRIVATE_KEY_FILE
-#    - '[[ -f /.dockerenv ]] && mkdir -p ~/.ssh/ && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
-#  script:
-#    - 'set -e'
-#    - '[[ -e artifacts/install.zip && -e artifacts/update.zip ]]'
-#    - >
-#      case $TAG in
-#        *-rc*) BUILD_CHANNEL=80;;
-#        *-beta*) BUILD_CHANNEL=60;;
-#        *-alpha*) BUILD_CHANNEL=40;;
-#        *-dev*) BUILD_CHANNEL=20;;
-#        *) BUILD_CHANNEL=100;;
-#      esac
-#    - 'IFS="-" read -ra VERSION_PARTS <<< "$TAG"'
-#    - 'if [[ -z CI_COMMIT_TAG ]]; then BUILD_CHANNEL=20; fi'
-#    - export BUILD_VERSION=${VERSION_PARTS[0]}
-#    - export BUILD_VERSION_TEXT=${VERSION_PARTS[1]}
-#    - '[[ -n $BUILD_VERSION ]]'
-#    - TSTAMP=$(date +%s)
-#    - INSTALL_FILE=artifacts/install_${TAG#"v"}_${TSTAMP}.zip
-#    - UPDATE_FILE=artifacts/update_${TAG#"v"}_${TSTAMP}.zip
-#    - mv artifacts/install.zip $INSTALL_FILE
-#    - mv artifacts/update.zip $UPDATE_FILE
-#    - s3cmd put artifacts/*.zip s3://releases.s3.shopware.com/sw6/ --acl-public
-#    - VERSION_TEXT_PARAM=
-#    - if [[ -n ${BUILD_VERSION_TEXT} ]]; then VERSION_TEXT_PARAM="--version-text=${BUILD_VERSION_TEXT}" fi
-#    - ssh shopware@${UPDATE_API_HOST} php /var/www/shopware-update-api/bin/console insert:release:data --release-version=${BUILD_VERSION} ${VERSION_TEXT_PARAM} --channel=${BUILD_CHANNEL} --min-version=6.0.0 --install-uri=${PACKAGE_BASE_URL}$(basename $INSTALL_FILE) --install-size=$(stat -c %s $INSTALL_FILE) --install-sha1=$(sha1sum $INSTALL_FILE | cut -d ' ' -f 1) --install-sha256=$(sha256sum $INSTALL_FILE | cut -d ' ' -f 1) --update-uri=${PACKAGE_BASE_URL}$(basename $UPDATE_FILE) --update-size=$(stat -c %s $UPDATE_FILE) --update-sha1=$(sha1sum $UPDATE_FILE | cut -d ' ' -f 1) --update-sha256=$(sha256sum $UPDATE_FILE | cut -d ' ' -f 1)
+Package:
+  stage: package
+  image:
+    name: docker/compose:1.24.1
+    entrypoint: [""]
+  services:
+    - name: docker:18.09.7-dind
+      alias: docker
+  only:
+    refs:
+      - tags
+      - schedules
+  before_script:
+    - '[ -n "$TAG" ] || apk --no-cache add openssh-client git bash jq composer php-dom php-tokenizer php-xmlwriter php-xml curl curl-dev'
+    - '[ -n "$TAG" ] || composer install --working-dir=.gitlab-ci/tools'
+    - docker login $REPOSITORY_HOST -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
+  script:
+    - TAG=${TAG:-$(.gitlab-ci/tools/console show-next-tag)}
+    - IMAGE_TAG="${CI_COMMIT_TAG:-${TAG}-dev}"
+    - docker pull ${IMAGE_NAME}:${IMAGE_TAG}
+    - docker run -v $PWD/artifacts:/artifacts --entrypoint=bin/package.sh ${IMAGE_NAME}:${IMAGE_TAG}
+  artifacts:
+    paths:
+      - artifacts/
+
+Insert-Release-Data:
+  stage: prepare-release
+  image: debian:9-slim
+  when: manual
+  only:
+    refs:
+      - tags
+      - schedules
+  before_script:
+    - 'echo TODO: fix me'
+    - apt-get update && apt-get install -y git openssh-client s3cmd
+    - eval $(ssh-agent -s)
+    - chmod 600 $SSH_PRIVATE_KEY_FILE && ssh-add $SSH_PRIVATE_KEY_FILE
+    - '[[ -f /.dockerenv ]] && mkdir -p ~/.ssh/ && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+  script:
+    - 'set -e'
+    - '[[ -e artifacts/install.zip && -e artifacts/update.zip ]]'
+    - export TAG=${TAG:-$(.gitlab-ci/tools/console show-next-tag)}
+    - >
+      case $TAG in
+        *-rc*) BUILD_CHANNEL=80;;
+        *-beta*) BUILD_CHANNEL=60;;
+        *-alpha*) BUILD_CHANNEL=40;;
+        *-dev*) BUILD_CHANNEL=20;;
+        *) BUILD_CHANNEL=100;;
+      esac
+    - 'IFS="-" read -ra VERSION_PARTS <<< "$TAG"'
+    - 'if [[ -z CI_COMMIT_TAG ]]; then BUILD_CHANNEL=20; fi'
+    - export BUILD_VERSION=${VERSION_PARTS[0]}
+    - export BUILD_VERSION_TEXT=${VERSION_PARTS[1]}
+    - '[[ -n $BUILD_VERSION ]]'
+    - TSTAMP=$(date +%s)
+    - INSTALL_FILE=artifacts/install_${TAG#"v"}_${TSTAMP}.zip
+    - UPDATE_FILE=artifacts/update_${TAG#"v"}_${TSTAMP}.zip
+    - mv artifacts/install.zip $INSTALL_FILE
+    - mv artifacts/update.zip $UPDATE_FILE
+    - s3cmd put artifacts/*.zip s3://releases.s3.shopware.com/sw6/ --acl-public
+    - VERSION_TEXT_PARAM=
+    - if [[ -n ${BUILD_VERSION_TEXT} ]]; then VERSION_TEXT_PARAM="--version-text=${BUILD_VERSION_TEXT}" fi
+    - ssh shopware@${UPDATE_API_HOST} php /var/www/shopware-update-api/bin/console insert:release:data --release-version=${BUILD_VERSION} ${VERSION_TEXT_PARAM} --channel=${BUILD_CHANNEL} --min-version=6.0.0 --install-uri=${PACKAGE_BASE_URL}$(basename $INSTALL_FILE) --install-size=$(stat -c %s $INSTALL_FILE) --install-sha1=$(sha1sum $INSTALL_FILE | cut -d ' ' -f 1) --install-sha256=$(sha256sum $INSTALL_FILE | cut -d ' ' -f 1) --update-uri=${PACKAGE_BASE_URL}$(basename $UPDATE_FILE) --update-size=$(stat -c %s $UPDATE_FILE) --update-sha1=$(sha1sum $UPDATE_FILE | cut -d ' ' -f 1) --update-sha256=$(sha256sum $UPDATE_FILE | cut -d ' ' -f 1)
 
 .Tag-Platform:
   stage: release
@@ -344,9 +336,18 @@ stages:
 #    - .gitlab-ci/create-release-branch.sh
 
 
-Proto:
-  image: alpine:3.11
+Create-Release-Branch:
   stage: proto
+  image:
+      name: docker/compose:1.24.1
+      entrypoint: [""]
+  services:
+      - name: docker:18.09.7-dind
+        alias: docker
+#  when: manual
+#    only:
+#      refs:
+#        - schedules
   variables:
     MANY_REPO_BASE_URL: "git@gitlab.shopware.com:shopware/6/product/many-repositories"
     TARGET_BRANCH: $PLATFORM_BRANCH
@@ -362,14 +363,14 @@ Proto:
     - '[[ -f /.dockerenv ]] && mkdir -p ~/.ssh/ && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
     - git config --global user.email $GIT_EMAIL
     - git config --global user.name $GIT_USER
-    - docker login $REPOSITORY_HOST -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
-    - export TAG=$(.gitlab-ci/tools/console show-next-tag)
+    - composer install --working-dir=.gitlab-ci/tools
+    - export TAG=${TAG:-$(.gitlab-ci/tools/console show-next-tag)}
     - export IMAGE_TAG="${TAG}-dev"
+    - docker login $REPOSITORY_HOST -u $REGISTRY_USERNAME --password-stdin < $REGISTRY_PASSWORD_FILE
     - docker pull ${IMAGE_NAME}:${IMAGE_TAG}
     - docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${COMPOSE_PROJECT_NAME}_app_server
     - docker tag ${IMAGE_NAME}:${IMAGE_TAG} shopware-production:local
     - docker-compose up -d app_server
-    - composer install --working-dir=.gitlab-ci/tools
   script:
     - export PROJECT_ROOT=$(pwd)
     - docker cp $(docker-compose ps -q app_server):/sw6/vendor/ .
