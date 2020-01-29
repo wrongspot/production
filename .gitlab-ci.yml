@@ -14,10 +14,10 @@ variables:
   PLATFORM_BRANCH: "6.1"
 
 stages:
-  - prepare-build
-  - build
-  - package
-  - test
+  #- prepare-build
+  #- build
+  #- package
+  #- test
   - prepare-release
   - release
 
@@ -135,7 +135,7 @@ Insert-Release-Data:
   before_script:
     - apt-get update && apt-get install -y git openssh-client composer php-dom python3-pip
     - pip3 install s3cmd
-    - composer install --working-dir=.gitlab-ci/tools'
+    - composer install --working-dir=.gitlab-ci/tools
     - eval $(ssh-agent -s)
     - chmod 600 $SSH_PRIVATE_KEY_FILE && ssh-add $SSH_PRIVATE_KEY_FILE
     - '[[ -f /.dockerenv ]] && mkdir -p ~/.ssh/ && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
