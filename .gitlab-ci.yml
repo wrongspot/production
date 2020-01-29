@@ -309,9 +309,9 @@ Create-Release-Branch:
       - name: docker:18.09.7-dind
         alias: docker
   when: manual
-    only:
-      refs:
-        - schedules
+  only:
+    refs:
+      - schedules
   variables:
     MANY_REPO_BASE_URL: "git@gitlab.shopware.com:shopware/6/product/many-repositories"
     TARGET_BRANCH: $PLATFORM_BRANCH
