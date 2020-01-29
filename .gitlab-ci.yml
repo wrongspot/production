@@ -14,7 +14,6 @@ variables:
   PLATFORM_BRANCH: "6.1"
 
 stages:
-  - proto
   - prepare-build
   - build
   - package
@@ -22,11 +21,11 @@ stages:
   - prepare-release
   - release
 
-.Split-Repos:on-nightly:
+Split-Repos:on-nightly:
   stage: prepare-build
-  only:
-    refs:
-      - schedules
+#  only:
+#    refs:
+#      - schedules
   image: debian:9-slim
   variables:
     SPLITSH: /usr/bin/splitsh-lite
@@ -52,11 +51,11 @@ stages:
     paths:
       - repos/*
 
-.Build:on-nightly:
+Build:on-nightly:
   stage: build
-  only:
-    refs:
-      - schedules
+#  only:
+#    refs:
+#      - schedules
   image: docker
   services:
     - name: docker:18.09.7-dind
@@ -337,7 +336,7 @@ Insert-Release-Data:
 
 
 Create-Release-Branch:
-  stage: proto
+  stage: prepare-release
   image:
       name: docker/compose:1.24.1
       entrypoint: [""]
