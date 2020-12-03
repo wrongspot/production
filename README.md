@@ -46,7 +46,7 @@ git clone --branch=6.1 https://github.com/shopware/production shopware
 cd shopware
 
 # install shopware and dependencies according to the composer.lock 
-composer install
+composer install --no-scripts
 
 # setup the environment
 bin/console system:setup
